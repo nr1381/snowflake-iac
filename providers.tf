@@ -1,3 +1,1 @@
-# providers.tf
 provider "snowflake" {}
-
