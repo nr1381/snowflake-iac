@@ -1,7 +1,7 @@
 name: snowflake-iac
 on:
-  pull_request: { branches: [ main ] }   # PRでplan
-  push: { branches: [ main ] }           # mainにpushでapply
+  pull_request: { branches: [ main ] }   # PRで plan
+  push:         { branches: [ main ] }   # main 直pushで apply
 
 env:
   AWS_REGION: ap-northeast-1
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container: hashicorp/terraform:1.8
     permissions:
-      id-token: write     # ← OIDCで必須
+      id-token: write   # OIDC 必須
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -23,12 +23,24 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Write private key for Snowflake
+      # (A) Snowflake鍵を書き出し＆SNOWFLAKE_* をエクスポート
+      - name: Export Snowflake envs
+        shell: bash
         run: |
-          echo "$PRIVATE_KEY_B64" | base64 -d > /tmp/sf_key.pem
+          base64 -d <<< "${{ secrets.PRIVATE_KEY_B64 }}" > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
-        env:
-          PRIVATE_KEY_B64: ${{ secrets.PRIVATE_KEY_B64 }}
+
+          echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"       >> $GITHUB_ENV
+          echo "SNOWFLAKE_ROLE=SECURITYADMIN"                >> $GITHUB_ENV
+          echo "SNOWFLAKE_REGION=ap-northeast-1"             >> $GITHUB_ENV
+          echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"       >> $GITHUB_ENV
+          echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> $GITHUB_ENV
+          {
+            echo "SNOWFLAKE_PRIVATE_KEY<<'EOF'"
+            cat /tmp/sf_key.pem
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: Terraform init (reconfigure & upgrade)
         run: terraform init -input=false -reconfigure -upgrade
@@ -43,13 +55,8 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
+      # (B) Terraform 実行
       - name: Terraform plan
-        env:
-          TF_VAR_account: ${{ secrets.SF_ACCOUNT }}                 # 例: RJ12293.ap-northeast-1
-          TF_VAR_user:    ${{ secrets.SF_USER }}                    # 例: TF_ADMIN
-          TF_VAR_private_key_path: /tmp/sf_key.pem
-          TF_VAR_role: SECURITYADMIN
-          TF_VAR_private_key_passphrase: ${{ secrets.SF_KEY_PASSPHRASE }} # (任意) 付けた場合のみ
         run: terraform plan -no-color -out=tfplan
 
       - name: Upload plan artifact
@@ -66,7 +73,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with: { name: tfplan, path: . }
 
@@ -76,22 +82,26 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Write private key for Snowflake
+      - name: Export Snowflake envs
+        shell: bash
         run: |
-          echo "$PRIVATE_KEY_B64" | base64 -d > /tmp/sf_key.pem
+          base64 -d <<< "${{ secrets.PRIVATE_KEY_B64 }}" > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
-        env:
-          PRIVATE_KEY_B64: ${{ secrets.PRIVATE_KEY_B64 }}
+          echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}" >> $GITHUB_ENV
+          echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"       >> $GITHUB_ENV
+          echo "SNOWFLAKE_ROLE=SECURITYADMIN"                >> $GITHUB_ENV
+          echo "SNOWFLAKE_REGION=ap-northeast-1"             >> $GITHUB_ENV
+          echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"       >> $GITHUB_ENV
+          echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> $GITHUB_ENV
+          {
+            echo "SNOWFLAKE_PRIVATE_KEY<<'EOF'"
+            cat /tmp/sf_key.pem
+            echo "EOF"
+          } >> $GITHUB_ENV
 
       - name: Terraform init (reconfigure)
         run: terraform init -input=false -reconfigure
 
       - name: Terraform apply
-        env:
-          TF_VAR_account: ${{ secrets.SF_ACCOUNT }}
-          TF_VAR_user:    ${{ secrets.SF_USER }}
-          TF_VAR_private_key_path: /tmp/sf_key.pem
-          TF_VAR_role: SECURITYADMIN
-          TF_VAR_private_key_passphrase: ${{ secrets.SF_KEY_PASSPHRASE }} # (任意)
         run: terraform apply -auto-approve tfplan
 
