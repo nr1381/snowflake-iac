@@ -21,54 +21,33 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Export Snowflake envs
+      - name: Write private key (PEM) to /tmp
         shell: sh
         run: |
-          # 秘密鍵 復元
           printf '%s' "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
-          sed -i 's/\r$//' /tmp/sf_key.pem 2>/dev/null || true
-
-          # Labs provider が読む正式名（これが本命）
-          echo "SNOWFLAKE_ACCOUNT_NAME=${{ secrets.SF_ACCOUNT }}"          >> "$GITHUB_ENV"  # 例: RJ12293
-          echo "SNOWFLAKE_ORGANIZATION_NAME=${{ secrets.SF_ORG }}"         >> "$GITHUB_ENV"  # 例: OG39968
-          echo "SNOWFLAKE_REGION=ap-northeast-1"                           >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"                     >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_ROLE=SECURITYADMIN"                              >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"                     >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> "$GITHUB_ENV"
-
-          # 互換目的（無くてもOK）：旧名
-          echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}"               >> "$GITHUB_ENV"
-
-          # 複数行の秘密鍵（EOFはクォートしない）
-          {
-            echo "SNOWFLAKE_PRIVATE_KEY<<EOF"
-            cat /tmp/sf_key.pem
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-      # デバッグ（渡ったか確認。問題なく動いたら削除OK）
-      - name: Debug env (temporary)
-        run: |
-          env | grep -E '^SNOWFLAKE_(ACCOUNT|ACCOUNT_NAME|ORGANIZATION_NAME|REGION|USER|ROLE|AUTHENTICATOR)=' \
-            | sed 's/=.*/=<masked>/'
-          echo "len(ACCOUNT_NAME)=$(printf %s "$SNOWFLAKE_ACCOUNT_NAME" | wc -c)"
-          echo "len(ORG_NAME)=$(printf %s "$SNOWFLAKE_ORGANIZATION_NAME" | wc -c)"
 
       - name: Terraform init (reconfigure & upgrade)
         run: terraform init -input=false -reconfigure -upgrade
 
-      - name: Show provider resolution
-        run: |
-          terraform version
-          terraform providers
-          sed -n '1,120p' .terraform.lock.hcl || true
-
       - name: Terraform validate
+        env:
+          TF_VAR_organization_name:   ${{ secrets.SF_ORG }}      # OG39968
+          TF_VAR_account_name:        ${{ secrets.SF_ACCOUNT }}  # RJ12293
+          TF_VAR_region:              ap-northeast-1
+          TF_VAR_username:            ${{ secrets.SF_USER }}     # TF_ADMIN
+          TF_VAR_role:                SECURITYADMIN
+          TF_VAR_private_key_passphrase: ${{ secrets.SF_KEY_PASSPHRASE }}
         run: terraform validate
 
       - name: Terraform plan
+        env:
+          TF_VAR_organization_name:   ${{ secrets.SF_ORG }}
+          TF_VAR_account_name:        ${{ secrets.SF_ACCOUNT }}
+          TF_VAR_region:              ap-northeast-1
+          TF_VAR_username:            ${{ secrets.SF_USER }}
+          TF_VAR_role:                SECURITYADMIN
+          TF_VAR_private_key_passphrase: ${{ secrets.SF_KEY_PASSPHRASE }}
         run: terraform plan -no-color -out=tfplan
 
       - name: Upload plan artifact
@@ -92,37 +71,22 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Export Snowflake envs
+      - name: Write private key (PEM) to /tmp
         shell: sh
         run: |
           printf '%s' "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
-          sed -i 's/\r$//' /tmp/sf_key.pem 2>/dev/null || true
-
-          echo "SNOWFLAKE_ACCOUNT_NAME=${{ secrets.SF_ACCOUNT }}"          >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_ORGANIZATION_NAME=${{ secrets.SF_ORG }}"         >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_REGION=ap-northeast-1"                           >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"                     >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_ROLE=SECURITYADMIN"                              >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"                     >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> "$GITHUB_ENV"
-          echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}"               >> "$GITHUB_ENV"
-          {
-            echo "SNOWFLAKE_PRIVATE_KEY<<EOF"
-            cat /tmp/sf_key.pem
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-      - name: Debug env (temporary)
-        run: |
-          env | grep -E '^SNOWFLAKE_(ACCOUNT|ACCOUNT_NAME|ORGANIZATION_NAME|REGION|USER|ROLE|AUTHENTICATOR)=' \
-            | sed 's/=.*/=<masked>/'
-          echo "len(ACCOUNT_NAME)=$(printf %s "$SNOWFLAKE_ACCOUNT_NAME" | wc -c)"
-          echo "len(ORG_NAME)=$(printf %s "$SNOWFLAKE_ORGANIZATION_NAME" | wc -c)"
 
       - name: Terraform init (reconfigure)
         run: terraform init -input=false -reconfigure
 
       - name: Terraform apply
+        env:
+          TF_VAR_organization_name:   ${{ secrets.SF_ORG }}
+          TF_VAR_account_name:        ${{ secrets.SF_ACCOUNT }}
+          TF_VAR_region:              ap-northeast-1
+          TF_VAR_username:            ${{ secrets.SF_USER }}
+          TF_VAR_role:                SECURITYADMIN
+          TF_VAR_private_key_passphrase: ${{ secrets.SF_KEY_PASSPHRASE }}
         run: terraform apply -auto-approve tfplan
 
