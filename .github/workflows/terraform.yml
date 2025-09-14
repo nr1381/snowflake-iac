@@ -1,0 +1,89 @@
+name: snowflake-iac
+on:
+  pull_request: { branches: [ main ] }   # PRでplan
+  push: { branches: [ main ] }           # main pushでapply
+
+env:
+  AWS_REGION: ap-northeast-1
+  AWS_ROLE_ARN: arn:aws:iam::321688112405:role/github-oidc-terraform
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    container: hashicorp/terraform:1.8
+    permissions:
+      id-token: write   # ← OIDC で必須
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Write private key for Snowflake
+        run: |
+          echo "$PRIVATE_KEY_B64" | base64 -d > /tmp/sf_key.pem
+          chmod 600 /tmp/sf_key.pem
+        env:
+          PRIVATE_KEY_B64: ${{ secrets.PRIVATE_KEY_B64 }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        env:
+          TF_VAR_account: ${{ secrets.SF_ACCOUNT }}
+          TF_VAR_user:    ${{ secrets.SF_USER }}
+          TF_VAR_private_key_path: /tmp/sf_key.pem
+          TF_VAR_role: SECURITYADMIN
+        run: terraform plan -no-color -out=tfplan
+
+      - uses: actions/upload-artifact@v4
+        with: { name: tfplan, path: tfplan }
+
+  apply:
+    needs: plan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    container: hashicorp/terraform:1.8
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ap-northeast-1
+      AWS_ROLE_ARN: arn:aws:iam::321688112405:role/github-oidc-terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: tfplan, path: . }
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Write private key for Snowflake
+        run: |
+          echo "$PRIVATE_KEY_B64" | base64 -d > /tmp/sf_key.pem
+          chmod 600 /tmp/sf_key.pem
+        env:
+          PRIVATE_KEY_B64: ${{ secrets.PRIVATE_KEY_B64 }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        env:
+          TF_VAR_account: ${{ secrets.SF_ACCOUNT }}
+          TF_VAR_user:    ${{ secrets.SF_USER }}
+          TF_VAR_private_key_path: /tmp/sf_key.pem
+          TF_VAR_role: SECURITYADMIN
+        run: terraform apply -auto-approve tfplan
+
