@@ -1,4 +1,3 @@
-# providers.tf
 variable "organization_name" {}
 variable "account_name" {}
 variable "region"  { default = "ap-northeast-1" }
@@ -13,7 +12,7 @@ provider "snowflake" {
   username                = var.username            # 例: TF_ADMIN
   role                    = var.role
   authenticator           = "SNOWFLAKE_JWT"
-  private_key             = file("/tmp/sf_key.pem") # GH Actions で書き出す
+  private_key             = file("/tmp/sf_key.pem") # GH Actionsで書き出す
   private_key_passphrase  = var.private_key_passphrase
 }
 
