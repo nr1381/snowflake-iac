@@ -24,7 +24,7 @@ jobs:
       - name: Export Snowflake envs
         shell: sh
         run: |
-          # 秘密鍵を復元
+          # 秘密鍵を復元します
           printf '%s' "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
           # CRLF を除去（念のため）
