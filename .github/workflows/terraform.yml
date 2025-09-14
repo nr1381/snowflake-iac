@@ -21,23 +21,26 @@ jobs:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # bash ではなく sh で動かす（コンテナに bash 無し）
       - name: Export Snowflake envs
         shell: sh
         run: |
           # 秘密鍵を復元
           printf '%s' "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
+          # CRLF を除去（念のため）
+          sed -i 's/\r$//' /tmp/sf_key.pem 2>/dev/null || true
 
-          # SNOWFLAKE_* を環境変数としてエクスポート
+          # 単一行の環境変数
           echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}" >> "$GITHUB_ENV"
           echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"       >> "$GITHUB_ENV"
           echo "SNOWFLAKE_ROLE=SECURITYADMIN"                >> "$GITHUB_ENV"
           echo "SNOWFLAKE_REGION=ap-northeast-1"             >> "$GITHUB_ENV"
           echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"       >> "$GITHUB_ENV"
           echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> "$GITHUB_ENV"
+
+          # 複数行の秘密鍵（EOF をクォートしない）
           {
-            echo "SNOWFLAKE_PRIVATE_KEY<<'EOF'"
+            echo "SNOWFLAKE_PRIVATE_KEY<<EOF"
             cat /tmp/sf_key.pem
             echo "EOF"
           } >> "$GITHUB_ENV"
@@ -84,6 +87,8 @@ jobs:
         run: |
           printf '%s' "${{ secrets.PRIVATE_KEY_B64 }}" | base64 -d > /tmp/sf_key.pem
           chmod 600 /tmp/sf_key.pem
+          sed -i 's/\r$//' /tmp/sf_key.pem 2>/dev/null || true
+
           echo "SNOWFLAKE_ACCOUNT=${{ secrets.SF_ACCOUNT }}" >> "$GITHUB_ENV"
           echo "SNOWFLAKE_USER=${{ secrets.SF_USER }}"       >> "$GITHUB_ENV"
           echo "SNOWFLAKE_ROLE=SECURITYADMIN"                >> "$GITHUB_ENV"
@@ -91,7 +96,7 @@ jobs:
           echo "SNOWFLAKE_AUTHENTICATOR=SNOWFLAKE_JWT"       >> "$GITHUB_ENV"
           echo "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE=${{ secrets.SF_KEY_PASSPHRASE }}" >> "$GITHUB_ENV"
           {
-            echo "SNOWFLAKE_PRIVATE_KEY<<'EOF'"
+            echo "SNOWFLAKE_PRIVATE_KEY<<EOF"
             cat /tmp/sf_key.pem
             echo "EOF"
           } >> "$GITHUB_ENV"
